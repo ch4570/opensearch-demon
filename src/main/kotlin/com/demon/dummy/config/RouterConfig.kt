@@ -10,6 +10,6 @@ class RouterConfig {
 
     @Bean
     fun routerFunction(dummyHandler: DummyHandler) = router {
-        POST("/api/dummy", dummyHandler::handleFileUpload)
+        POST("/api/dummy/{option}", dummyHandler::handleFileUpload)
     }
 }

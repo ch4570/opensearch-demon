@@ -1,5 +1,6 @@
 package com.demon.dummy.handler
 
+import com.demon.dummy.domain.DummyDto
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.http.codec.multipart.FilePart
 import org.springframework.stereotype.Component
@@ -12,12 +13,15 @@ class DummyHandler(
 ) {
 
     fun handleFileUpload(severRequest: ServerRequest) =
+
             severRequest.multipartData()
                     .mapNotNull { it.toSingleValueMap()["logs"] }
                     .cast(FilePart::class.java)
                     .flatMap {
                         filePart ->
-                        eventPublisher.publishEvent(filePart)
+                        eventPublisher.publishEvent(
+                            DummyDto(filePart=filePart,
+                                option = severRequest.pathVariable("option")))
                         ServerResponse
                                 .ok().build()
                     }
