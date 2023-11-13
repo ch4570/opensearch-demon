@@ -8,8 +8,7 @@ import org.springframework.web.reactive.function.server.router
 @Configuration
 class RouterConfig {
 
-    @Bean
+//    @Bean
     fun routerFunction(dummyHandler: DummyHandler) = router {
-        POST("/api/dummy/{option}", dummyHandler::handleFileUpload)
     }
 }

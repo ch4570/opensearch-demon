@@ -12,19 +12,7 @@ class DummyHandler(
         private val eventPublisher: ApplicationEventPublisher
 ) {
 
-    fun handleFileUpload(severRequest: ServerRequest) =
 
-            severRequest.multipartData()
-                    .mapNotNull { it.toSingleValueMap()["logs"] }
-                    .cast(FilePart::class.java)
-                    .flatMap {
-                        filePart ->
-                        eventPublisher.publishEvent(
-                            DummyDto(filePart=filePart,
-                                option = severRequest.pathVariable("option")))
-                        ServerResponse
-                                .ok().build()
-                    }
 
 
 }

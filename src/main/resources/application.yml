@@ -1,1 +1,10 @@
 
+opensearch:
+  username: admin
+  password: admin
+  hostname: localhost
+  port: 9200
+  scheme: https
+
+server:
+  port: 9999

@@ -11,6 +11,8 @@ import org.opensearch.common.xcontent.XContentType
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.lang.IllegalArgumentException
 
 
@@ -23,46 +25,119 @@ class FileEventHandler(
     @Async
     @EventListener
     fun sendRequesting(dummyDto: DummyDto) {
-        dummyDto.filePart.content().map { buffer ->
-            buffer.asInputStream().reader().useLines { lines ->
-                lines.forEach { line -> sendData(line, dummyDto.option) }
-            }
-        }.subscribe()
 
+        for (i: Int in 1..2) {
+            try {
+
+                val option = dummyDto.option
+                val resourcePath = if (option.equals("syslog")) "sys-log${i}.log"
+                else "auth-log${i}.log"
+
+                // 리소스 파일을 읽어오기
+                val inputStream = javaClass.classLoader.getResourceAsStream(resourcePath)
+
+                if (inputStream != null) {
+                    // BufferedReader를 사용하여 파일의 각 줄을 읽어오기
+                    val reader = BufferedReader(InputStreamReader(inputStream))
+                    var line: String? = reader.readLine()
+
+                    while (line != null) {
+                        // 한 줄씩 데이터 전송
+                        sendDataToOpenSearch(option = dummyDto.option, line = line)
+                        line = reader.readLine()
+                    }
+
+                    // 리더를 닫아주기
+                    reader.close()
+                } else {
+                    println("리소스를 찾을 수 없습니다: $resourcePath")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+        }
     }
 
-    private fun sendData(line: String, option: String) {
-        val host = Host(
-                port = "9080",
-                ip = "127.0.0.1",
-                name = "vm-0871"
-        )
-
-        val dummy = DummyData(
-                log = line,
-                host = host,
-                region = "seoul"
-        )
-
-        val jsonData = objectMapper.writeValueAsString(dummy)
-
+    fun makeIndexAndSendData(line: String, grade: String, option: String) {
+        val dummyData = createDummyData(line, grade)
+        val jsonData = objectMapper.writeValueAsString(dummyData)
         val indexRequest = createIndexRequest(option, jsonData)
-
         restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT)
     }
 
-    fun createIndexRequest(option: String, jsonData: String) : IndexRequest {
-        return when(option) {
+    fun sendDataToOpenSearch(option: String, line: String) {
+        when (option) {
+            "linuxsys" -> {
+                val grade =
+                    if (line.contains("minjae-HP-ProDesk-600-G2-DM") ||
+                        line.contains("hjnam-server")
+                    ) "info"
+                    else if (line.contains("systemd")) "warn"
+                    else if (line.contains("UFW BLOCK")) "error"
+                    else null
+
+                if (grade != null) {
+
+                    makeIndexAndSendData(line, grade, option)
+                }
+            }
+
+            "linuxauth" -> {
+                val grade =
+                    if (line.contains("error")) "error"
+                    else if (line.contains("FAILED") || line.contains("banner exchange")) "warn"
+                    else "info"
+
+                makeIndexAndSendData(line = line, grade = grade, option = option)
+            }
+
+            else -> throw IllegalArgumentException()
+
+        }
+    }
+
+
+    fun createDummyData(line: String, grade: String): DummyData {
+        val regionList = listOf("Seoul", "Busan", "Anyang", "Cheongna")
+        val port = (1000..60000).random()
+        val ip1 = (10..254).random()
+        val ip2 = (10..254).random()
+        val ip3 = (10..254).random()
+        val ip4 = (10..254).random()
+        val regionIndex = (0..3).random()
+
+        val vmIndex = (2311..18923).random()
+
+        val host = Host(
+            port = "$port",
+            ip = "${ip1}.${ip2}.${ip3}.${ip4}",
+            name = "vm-${vmIndex}"
+        )
+
+        return DummyData(
+            log = line,
+            host = host,
+            region = regionList[regionIndex],
+            grade = grade
+        )
+    }
+
+
+    fun createIndexRequest(option: String, jsonData: String): IndexRequest {
+        return when (option) {
             "linuxsys" -> {
                 IndexRequest("category-log-linuxsys")
                     .source(jsonData, XContentType.JSON)
                     .setPipeline("timestamp-processor")
             }
+
             "linuxauth" -> {
                 IndexRequest("category-log-linuxauth")
                     .source(jsonData, XContentType.JSON)
                     .setPipeline("timestamp-processor")
             }
+
             else -> throw IllegalArgumentException()
         }
     }
