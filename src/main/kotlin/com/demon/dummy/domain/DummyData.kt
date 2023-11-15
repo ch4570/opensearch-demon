@@ -4,7 +4,9 @@ class DummyData(
         val log: String,
         val host: Host,
         val region: String,
-        val grade: String
+        val level: String,
+        val guid: String,
+        val category: String
 ) {
 
 }

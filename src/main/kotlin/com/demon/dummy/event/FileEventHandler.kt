@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.lang.IllegalArgumentException
+import java.util.UUID
 
 
 @Component
@@ -26,41 +27,43 @@ class FileEventHandler(
     @EventListener
     fun sendRequesting(dummyDto: DummyDto) {
 
-        for (i: Int in 1..2) {
-            try {
+        for (j: Int in 1..10) {
+            for (i: Int in 1..2) {
+                try {
+                    val option = dummyDto.option
+                    val resourcePath = if (option.equals("was")) "sys-log${i}.log"
+                    else "auth-log${i}.log"
 
-                val option = dummyDto.option
-                val resourcePath = if (option.equals("syslog")) "sys-log${i}.log"
-                else "auth-log${i}.log"
+                    // 리소스 파일을 읽어오기
+                    val inputStream = javaClass.classLoader.getResourceAsStream(resourcePath)
 
-                // 리소스 파일을 읽어오기
-                val inputStream = javaClass.classLoader.getResourceAsStream(resourcePath)
+                    if (inputStream != null) {
+                        // BufferedReader를 사용하여 파일의 각 줄을 읽어오기
+                        val reader = BufferedReader(InputStreamReader(inputStream))
+                        var line: String? = reader.readLine()
 
-                if (inputStream != null) {
-                    // BufferedReader를 사용하여 파일의 각 줄을 읽어오기
-                    val reader = BufferedReader(InputStreamReader(inputStream))
-                    var line: String? = reader.readLine()
+                        while (line != null) {
+                            // 한 줄씩 데이터 전송
+                            sendDataToOpenSearch(option = dummyDto.option, line = line)
+                            line = reader.readLine()
+                        }
 
-                    while (line != null) {
-                        // 한 줄씩 데이터 전송
-                        sendDataToOpenSearch(option = dummyDto.option, line = line)
-                        line = reader.readLine()
+                        // 리더를 닫아주기
+                        reader.close()
+                    } else {
+                        println("리소스를 찾을 수 없습니다: $resourcePath")
                     }
-
-                    // 리더를 닫아주기
-                    reader.close()
-                } else {
-                    println("리소스를 찾을 수 없습니다: $resourcePath")
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
 
+            }
         }
+
     }
 
-    fun makeIndexAndSendData(line: String, grade: String, option: String) {
-        val dummyData = createDummyData(line, grade)
+    fun makeIndexAndSendData(line: String, level: String, option: String) {
+        val dummyData = createDummyData(line, level, option)
         val jsonData = objectMapper.writeValueAsString(dummyData)
         val indexRequest = createIndexRequest(option, jsonData)
         restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT)
@@ -68,7 +71,7 @@ class FileEventHandler(
 
     fun sendDataToOpenSearch(option: String, line: String) {
         when (option) {
-            "linuxsys" -> {
+            "was" -> {
                 val grade =
                     if (line.contains("minjae-HP-ProDesk-600-G2-DM") ||
                         line.contains("hjnam-server")
@@ -83,13 +86,13 @@ class FileEventHandler(
                 }
             }
 
-            "linuxauth" -> {
-                val grade =
+            "app" -> {
+                val level =
                     if (line.contains("error")) "error"
                     else if (line.contains("FAILED") || line.contains("banner exchange")) "warn"
                     else "info"
 
-                makeIndexAndSendData(line = line, grade = grade, option = option)
+                makeIndexAndSendData(line = line, level = level, option = option)
             }
 
             else -> throw IllegalArgumentException()
@@ -98,7 +101,7 @@ class FileEventHandler(
     }
 
 
-    fun createDummyData(line: String, grade: String): DummyData {
+    fun createDummyData(line: String, level: String, option: String): DummyData {
         val regionList = listOf("Seoul", "Busan", "Anyang", "Cheongna")
         val port = (1000..60000).random()
         val ip1 = (10..254).random()
@@ -119,21 +122,23 @@ class FileEventHandler(
             log = line,
             host = host,
             region = regionList[regionIndex],
-            grade = grade
+            level = level,
+            guid = UUID.randomUUID().toString(),
+            category = option
         )
     }
 
 
     fun createIndexRequest(option: String, jsonData: String): IndexRequest {
         return when (option) {
-            "linuxsys" -> {
-                IndexRequest("category-log-linuxsys")
+            "was" -> {
+                IndexRequest("oke-log-was")
                     .source(jsonData, XContentType.JSON)
                     .setPipeline("timestamp-processor")
             }
 
-            "linuxauth" -> {
-                IndexRequest("category-log-linuxauth")
+            "app" -> {
+                IndexRequest("oke-log-app")
                     .source(jsonData, XContentType.JSON)
                     .setPipeline("timestamp-processor")
             }
